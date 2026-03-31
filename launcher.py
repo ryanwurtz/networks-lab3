@@ -8,7 +8,7 @@ import time
 ROOT          = os.path.dirname(os.path.abspath(__file__))
 EMULATOR_DIR  = os.path.join(ROOT, "Emulator")
 # Handles the space in "Student Code"
-STUDENT_DIR   = os.path.join(ROOT, "Student Code", "stop_and_go")
+STUDENT_DIR   = os.path.join(ROOT, "Student Code", "student")
 CONFIG_DIR    = os.path.join(ROOT, "TestConfig")
 
 processes = []
@@ -48,11 +48,11 @@ def main():
     time.sleep(2)
 
     # 2. Receiver
-    run_bg("Receiver", STUDENT_DIR, ["python", "receiver_stop_and_go.py", abs_config])
+    run_bg("Receiver", STUDENT_DIR, ["python", "receiver.py", abs_config])
     time.sleep(1)
 
     # 3. Sender
-    run_bg("Sender", STUDENT_DIR, ["python", "sender_stop_and_go.py", abs_config])
+    run_bg("Sender", STUDENT_DIR, ["python", "sender.py", abs_config])
 
     print("\n" + "="*45)
     print(" ALL PROCESSES RUNNING IN BACKGROUND ")
