@@ -1,0 +1,6 @@
+Run,Config,Correct,File Size,Goodput,Sender Time,Recv Time,Sent Packets,Recv Packets,Sent Bytes,Recv Bytes,Overhead
+1,config1.ini,True,578317,59478.18,9.72,9.48,586,574,597487,585247,19170
+2,config1.ini,True,578317,68273.01,8.47,8.25,586,575,597487,586267,19170
+3,config1.ini,True,578317,76670.47,7.54,7.31,582,575,593407,586267,15090
+4,config1.ini,True,578317,57158.33,10.12,9.88,589,577,600547,588307,22230
+5,config1.ini,True,578317,51420.01,11.25,11.03,590,575,601567,586267,23250

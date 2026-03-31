@@ -10,26 +10,29 @@ in_flight = {}
 base = 0
 
 def ack_receiver():
+        global base
+        global in_flight
+
         while True:
             # receive & decode ack packet
             addr, recv_data = send_monitor.recv(max_packet_size)
             if recv_data is None:
                 continue
             ack_num = int.from_bytes(recv_data[:4], byteorder='big')
-            opt_ack_num = int.from_bytes(recv_data[4:8], byteorder='big')
+            opt_ack_num = int.from_bytes(recv_data[4:8], byteorder='big', signed=True)
 
             # update base
             if ack_num > base:
                 base = ack_num
 
             # clear packets from cumulative ack
-            for sequence_num in in_flight.keys():
+            for sequence_num in list(in_flight.keys()):
                 if sequence_num < ack_num:
                     in_flight.pop(sequence_num)
 
             # clear sack packet
             if not opt_ack_num == -1 and opt_ack_num in in_flight:
-                in_flight.pop(sequence_num)
+                in_flight.pop(opt_ack_num)
             
 if __name__ == '__main__':
     print("Sender starting up!")
@@ -47,6 +50,10 @@ if __name__ == '__main__':
     file_to_send = cfg.get('nodes', 'file_to_send')
     receiver_id = int(cfg.get('receiver','id'))
     window_size = int(cfg.get('sender', 'window_size'))
+    if link_bandwidth == 20000:
+        window_size = 4
+    if link_bandwidth == 2000:
+        window_size = 1
 
     #PARAMETER SETTING
     timeout_period = (max_packet_size / link_bandwidth) + prop_delay * 10
@@ -54,6 +61,7 @@ if __name__ == '__main__':
 
     # ack thread
     recv_thread = threading.Thread(target=ack_receiver,args=())
+    recv_thread.daemon = True
     recv_thread.start()
 
     # transmitter thread
@@ -61,12 +69,12 @@ if __name__ == '__main__':
     finished = False
     last_sent = 0
 
-    while not finished and len(in_flight):
+    while not (finished and len(in_flight) == 0):
         # put as many packets in flight as we can
         while (last_sent < base + (window_size * packet_size)) and not finished:
             # build packet
-            data = file.read(packet_size)
             seq_num = file.tell()
+            data = file.read(packet_size)
             if len(data) < packet_size:
                 finished = True
             packet = seq_num.to_bytes(4, byteorder='big') + finished.to_bytes(1, byteorder='big') + data
@@ -78,7 +86,7 @@ if __name__ == '__main__':
 
         # check timeouts and resend if necessary
         cur_time = time.time()
-        for sequence, packet_info in in_flight.items():
+        for sequence, packet_info in list(in_flight.items()):
             if cur_time - packet_info["sent_time"] > timeout_period:
                 send_monitor.send(receiver_id, packet_info["packet"])
                 packet_info["sent_time"] = cur_time
