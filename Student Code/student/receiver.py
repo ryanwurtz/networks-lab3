@@ -1,8 +1,6 @@
 #!/usr/bin/env python3
 from monitor import Monitor
 import sys
-
-# Config File
 import configparser
 
 if __name__ == '__main__':
@@ -20,34 +18,49 @@ if __name__ == '__main__':
     write_dest = cfg.get('receiver','write_location')
     max_packet_size = int(cfg.get('network', 'MAX_PACKET_SIZE'))
 
-    #FILE SETUP
-    open(write_dest, 'wb').close()
-
     #RECEIVE LOOP
-    last_packet_received = False
-    exp_packet_num = 0
+    open(write_dest, 'wb').close()
+    base = 0
+    unacked_nums = set()
 
     while True:
-        #receive packet
+        # parse packet
         addr, data = recv_monitor.recv(max_packet_size)
         if data is None:
             continue
-        
-        #parse packet
-        packet_num = int.from_bytes(data[2:4], byteorder='big')
-        finished = int.from_bytes(data[4:5], byteorder='big')
+        packet_num = int.from_bytes(data[0:4], byteorder='big')
+        finished = int.from_bytes(data[4], byteorder='big')
         packet_data = data[5:]
 
-        #write data if any
-        if packet_num == exp_packet_num:
-            with open(write_dest,"ab") as file:
-                file.write(packet_data)
-            exp_packet_num += 1
+        # the next packet
+        if packet_num == base + 1015:
+            base = packet_num
 
-            #end if final packet received
-            if finished == 1:
-                recv_monitor.recv_end(write_dest, sender_id)
+            while base in unacked_nums:
+                unacked_nums.remove(base)
+                base += 1015
 
-        #send ack
-        ack_packet = packet_num.to_bytes(2, byteorder='big')
-        recv_monitor.send(addr, ack_packet)
+            ack_packet = base.to_bytes(4, byteorder='big') + (-1).to_bytes(4, byteorder='big')
+            recv_monitor.send(addr, ack_packet)
+
+        # OOO packet
+        if packet_num > base + 1015:
+            unacked_nums.add(packet_num)
+            ack_packet = base.to_bytes(4, byteorder='big') + packet_num.to_bytes(4, byteorder='big')
+            recv_monitor.send(addr, ack_packet)
+        
+        # duplicate packet
+        else:
+            ack_packet = base.to_bytes(4, byteorder='big') + (-1).to_bytes(4, byteorder='big')
+            recv_monitor.send(addr, ack_packet)
+
+        # write packet to file
+        with open(write_dest,"ab") as file:
+            file.seek(packet_num)
+            file.write(packet_data)
+
+        #end if final packet received
+        if finished == 1:
+            recv_monitor.recv_end(write_dest, sender_id)
+
+        
