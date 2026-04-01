@@ -10,7 +10,7 @@ import re
 # -- Absolute Path Setup --
 ROOT          = os.path.dirname(os.path.abspath(__file__))
 EMULATOR_DIR  = os.path.join(ROOT, "Emulator")
-STUDENT_DIR   = os.path.join(ROOT, "Student Code", "student")
+STUDENT_DIR   = os.path.join(ROOT, "Student Code", "stop_and_go")
 CONFIG_DIR    = os.path.join(ROOT, "TestConfig")
 
 def parse_log_val(regex, text, default="N/A"):
@@ -68,12 +68,12 @@ def main():
         
         # 2. Start Receiver
         print("  [+] Starting Receiver...")
-        recv_proc = subprocess.Popen(["python", "receiver.py", temp_config], cwd=STUDENT_DIR)
+        recv_proc = subprocess.Popen(["python", "receiver_stop_and_go.py", temp_config], cwd=STUDENT_DIR)
         time.sleep(1)
         
         # 3. Start Sender
         print("  [+] Starting Sender...")
-        send_proc = subprocess.Popen(["python", "sender.py", temp_config], cwd=STUDENT_DIR)
+        send_proc = subprocess.Popen(["python", "sender_stop_and_go.py", temp_config], cwd=STUDENT_DIR)
         
         print(f"  [*] Waiting for transmission to finish...")
         # This acts as our block. It pauses the script until the sender naturally exits!

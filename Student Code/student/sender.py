@@ -4,14 +4,26 @@ import sys
 import configparser
 import time
 import threading
+import math
 
 # cross thread variables
 in_flight = {}
 base = 0
+cwnd = 25
+window_cnt = 1
+threshold = 45
+retrans = set()
 
 def ack_receiver():
         global base
         global in_flight
+        global cwnd
+        global window_cnt
+        global threshold
+        global retrans
+
+        ack_count = 0
+        last_cum_ack = 0
 
         while True:
             # receive & decode ack packet
@@ -25,6 +37,12 @@ def ack_receiver():
             if ack_num > base:
                 base = ack_num
 
+                # update window
+                if cwnd < threshold:
+                    window_cnt = min(50, window_cnt+2)
+                else:
+                    window_cnt = min(50, window_cnt+1)
+
             # clear packets from cumulative ack
             for sequence_num in list(in_flight.keys()):
                 if sequence_num < ack_num:
@@ -33,6 +51,16 @@ def ack_receiver():
             # clear sack packet
             if not opt_ack_num == -1 and opt_ack_num in in_flight:
                 in_flight.pop(opt_ack_num)
+
+            # fast retransmit
+            if last_cum_ack == ack_num:
+                ack_count += 1
+            else:
+                last_cum_ack = ack_num
+                ack_count = 0
+
+            if ack_count == 3:
+                retrans.add(last_cum_ack)
             
 if __name__ == '__main__':
     print("Sender starting up!")
@@ -49,14 +77,10 @@ if __name__ == '__main__':
     link_bandwidth = int(cfg.get('network', 'LINK_BANDWIDTH'))
     file_to_send = cfg.get('nodes', 'file_to_send')
     receiver_id = int(cfg.get('receiver','id'))
-    window_size = int(cfg.get('sender', 'window_size'))
-    if link_bandwidth == 20000:
-        window_size = 4
-    if link_bandwidth == 2000:
-        window_size = 1
+    max_window_size = int(cfg.get('sender', 'window_size'))
 
     #PARAMETER SETTING
-    timeout_period = (max_packet_size / link_bandwidth) + prop_delay * 10
+    timeout_period = ((max_packet_size / link_bandwidth) + 2*prop_delay) * 3
     packet_size = 1015
 
     # ack thread
@@ -68,13 +92,31 @@ if __name__ == '__main__':
     file = open(file_to_send, "rb")
     finished = False
     last_sent = 0
+    next_seq_num = 0
 
     while not (finished and len(in_flight) == 0):
-        # put as many packets in flight as we can
-        while (last_sent < base + (window_size * packet_size)) and not finished:
+        # check for fast retransmit packets first
+        for num in list(retrans):
+
             # build packet
-            seq_num = file.tell()
+            file.seek(num)
             data = file.read(packet_size)
+            packet = num.to_bytes(4, byteorder='big') + finished.to_bytes(1, byteorder='big') + data
+
+            # fire away
+            send_monitor.send(receiver_id, packet)
+            in_flight[num] = {"packet": packet, "sent_time": time.time()}
+            retrans.remove(num)
+
+        # put as many packets in flight as we can
+        cwnd = math.floor(window_cnt)
+        cwnd = 45
+        while (last_sent < base + (cwnd * packet_size)) and not finished:
+            # build packet
+            file.seek(next_seq_num)
+            seq_num = next_seq_num
+            data = file.read(packet_size)
+            next_seq_num = file.tell()
             if len(data) < packet_size:
                 finished = True
             packet = seq_num.to_bytes(4, byteorder='big') + finished.to_bytes(1, byteorder='big') + data
@@ -86,10 +128,17 @@ if __name__ == '__main__':
 
         # check timeouts and resend if necessary
         cur_time = time.time()
+        timeout = False
         for sequence, packet_info in list(in_flight.items()):
             if cur_time - packet_info["sent_time"] > timeout_period:
                 send_monitor.send(receiver_id, packet_info["packet"])
                 packet_info["sent_time"] = cur_time
+                timeout = True
+
+        # update window
+        if timeout:
+            threshold = max(2, cwnd / 2)
+            window_cnt = max(2, cwnd / 2)
 
 
     # Exit! Make sure the receiver ends before the sender. send_end will stop the emulator.
